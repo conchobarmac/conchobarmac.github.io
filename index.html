@@ -2,11 +2,10 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Google Map with Bounding Box</title>
-    <!-- Replace YOUR_API_KEY with your actual key -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBX_I71Gwb4In2KPQPQhlJ9bzaFFsw7ITQ"></script>
+    <title>Google Map with Polygon</title>
+    <!-- Replace YOUR_API_KEY with your actual API key -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script>
     <style>
-      /* Make the map fill the entire page */
       html, body {
         margin: 0;
         padding: 0;
@@ -19,42 +18,53 @@
     </style>
     <script>
       function initMap() {
-        // Grab coordinates from the query string in the URL
+        // Grab the 'coords' param from the query string
         const urlParams = new URLSearchParams(window.location.search);
-        const north = parseFloat(urlParams.get('north'));
-        const south = parseFloat(urlParams.get('south'));
-        const east  = parseFloat(urlParams.get('east'));
-        const west  = parseFloat(urlParams.get('west'));
+        const coordsParam = urlParams.get('coords');  // e.g. "37.8,-122.4;37.7,-122.3;..."
 
-        // Figure out a nice center point for the map
-        const centerLat = (north + south) / 2;
-        const centerLng = (east + west) / 2;
+        // If no coords param, just center on some default location
+        if (!coordsParam) {
+          console.warn('No coords parameter found in URL. Using default center.');
+          const defaultCenter = { lat: 37.77, lng: -122.41 }; // SF
+          const map = new google.maps.Map(document.getElementById('map'), {
+            center: defaultCenter,
+            zoom: 8,
+            mapTypeId: 'satellite',
+          });
+          return;
+        }
 
-        // Create the map
-        const map = new google.maps.Map(document.getElementById('map'), {
-          center: { lat: centerLat, lng: centerLng },
-          zoom: 8,
-          mapTypeId: 'satellite', // Satellite view
+        // Parse the coords into an array of { lat, lng } objects
+        // For example, coordsParam = "37.8,-122.4;37.7,-122.3;37.75,-122.35"
+        const pairs = coordsParam.split(';'); 
+        const path = pairs.map(pair => {
+          const [latStr, lngStr] = pair.split(',');
+          return { lat: parseFloat(latStr), lng: parseFloat(lngStr) };
         });
 
-        // Define the bounding box (rectangle)
-        const bounds = {
-          north: north,
-          south: south,
-          east:  east,
-          west:  west
-        };
+        // Initialize the map, but let's not specify center/zoom directly.
+        // We'll auto-fit the map to the polygon’s bounds after we create it.
+        const map = new google.maps.Map(document.getElementById('map'), {
+          center: { lat: 0, lng: 0 },
+          zoom: 3,
+          mapTypeId: 'satellite'
+        });
 
-        // Draw the rectangle on the map
-        const rectangle = new google.maps.Rectangle({
-          bounds: bounds,
-          editable: false,
-          draggable: false,
+        // Create a polygon from the path
+        const polygon = new google.maps.Polygon({
+          paths: path,
           strokeColor: '#FF0000',
           fillColor: '#FF0000',
-          fillOpacity: 0.15
+          fillOpacity: 0.15,
+          strokeWeight: 2
         });
-        rectangle.setMap(map);
+        polygon.setMap(map);
+
+        // Auto-fit the map to the polygon
+        const bounds = new google.maps.LatLngBounds();
+        path.forEach(coord => bounds.extend(coord));
+        map.fitBounds(bounds);
+
       }
     </script>
   </head>
