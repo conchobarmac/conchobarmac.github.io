@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Google Map with Bounding Box</title>
+    <!-- Replace YOUR_API_KEY with your actual key -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script>
+    <style>
+      /* Make the map fill the entire page */
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      #map {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+    <script>
+      function initMap() {
+        // Grab coordinates from the query string in the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const north = parseFloat(urlParams.get('north'));
+        const south = parseFloat(urlParams.get('south'));
+        const east  = parseFloat(urlParams.get('east'));
+        const west  = parseFloat(urlParams.get('west'));
+
+        // Figure out a nice center point for the map
+        const centerLat = (north + south) / 2;
+        const centerLng = (east + west) / 2;
+
+        // Create the map
+        const map = new google.maps.Map(document.getElementById('map'), {
+          center: { lat: centerLat, lng: centerLng },
+          zoom: 8,
+          mapTypeId: 'satellite', // Satellite view
+        });
+
+        // Define the bounding box (rectangle)
+        const bounds = {
+          north: north,
+          south: south,
+          east:  east,
+          west:  west
+        };
+
+        // Draw the rectangle on the map
+        const rectangle = new google.maps.Rectangle({
+          bounds: bounds,
+          editable: false,
+          draggable: false,
+          strokeColor: '#FF0000',
+          fillColor: '#FF0000',
+          fillOpacity: 0.15
+        });
+        rectangle.setMap(map);
+      }
+    </script>
+  </head>
+  <body onload="initMap()">
+    <div id="map"></div>
+  </body>
+</html>
