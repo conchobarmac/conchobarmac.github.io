@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Google Map with Polygon</title>
+    <title>Google Map with GeoJSON Polygon</title>
     <!-- Replace YOUR_API_KEY with your actual API key -->
     <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script>
     <style>
@@ -18,53 +18,118 @@
     </style>
     <script>
       function initMap() {
-        // Grab the 'coords' param from the query string
+        // 1. Grab the 'geojson' param from the URL
         const urlParams = new URLSearchParams(window.location.search);
-        const coordsParam = urlParams.get('coords');  // e.g. "37.8,-122.4;37.7,-122.3;..."
-
-        // If no coords param, just center on some default location
-        if (!coordsParam) {
-          console.warn('No coords parameter found in URL. Using default center.');
-          const defaultCenter = { lat: 37.77, lng: -122.41 }; // SF
+        const geojsonParam = urlParams.get('geojson');
+        
+        if (!geojsonParam) {
+          console.warn('No geojson param provided. Using a default center.');
           const map = new google.maps.Map(document.getElementById('map'), {
-            center: defaultCenter,
+            center: { lat: 37.77, lng: -122.41 },
             zoom: 8,
-            mapTypeId: 'satellite',
+            mapTypeId: 'satellite'
           });
           return;
         }
 
-        // Parse the coords into an array of { lat, lng } objects
-        // For example, coordsParam = "37.8,-122.4;37.7,-122.3;37.75,-122.35"
-        const pairs = coordsParam.split(';'); 
-        const path = pairs.map(pair => {
-          const [latStr, lngStr] = pair.split(',');
-          return { lat: parseFloat(latStr), lng: parseFloat(lngStr) };
-        });
+        // 2. Parse the JSON
+        let geojson;
+        try {
+          geojson = JSON.parse(geojsonParam);
+        } catch (e) {
+          console.error('Error parsing geojson:', e);
+          // Fallback map if parsing fails
+          const map = new google.maps.Map(document.getElementById('map'), {
+            center: { lat: 37.77, lng: -122.41 },
+            zoom: 8,
+            mapTypeId: 'satellite'
+          });
+          return;
+        }
+        
+        // 3. Extract the polygon coordinates
+        //    Let's assume it's a Feature with a Polygon geometry.
+        //    GeoJSON polygon coordinates are typically: geometry.coordinates = [ [ [lng, lat], [lng, lat], ... ] ]
+        //    We'll only handle the outer ring here. For multiple rings or multi-polygons, you'll need extra logic.
+        
+        // If it's a FeatureCollection, pick the first feature:
+        if (geojson.type === "FeatureCollection") {
+          // for safety, just pick the first feature
+          geojson = geojson.features[0]; 
+        }
 
-        // Initialize the map, but let's not specify center/zoom directly.
-        // We'll auto-fit the map to the polygon’s bounds after we create it.
+        // If it's a Feature, dig into the geometry:
+        let geometry;
+        if (geojson.type === "Feature") {
+          geometry = geojson.geometry;
+        } else if (geojson.type === "Polygon") {
+          // it's directly a geometry
+          geometry = geojson;
+        } else {
+          console.error("Unsupported GeoJSON type:", geojson.type);
+          return;
+        }
+
+        if (geometry.type !== "Polygon" && geometry.type !== "MultiPolygon") {
+          console.error("GeoJSON geometry is not a Polygon or MultiPolygon. Found:", geometry.type);
+          return;
+        }
+
         const map = new google.maps.Map(document.getElementById('map'), {
           center: { lat: 0, lng: 0 },
           zoom: 3,
           mapTypeId: 'satellite'
         });
 
-        // Create a polygon from the path
-        const polygon = new google.maps.Polygon({
-          paths: path,
-          strokeColor: '#FF0000',
-          fillColor: '#FF0000',
-          fillOpacity: 0.15,
-          strokeWeight: 2
-        });
-        polygon.setMap(map);
+        // A helper function to convert a single ring from [lng, lat] to google's {lat, lng} format:
+        function ringToLatLng(ringCoords) {
+          return ringCoords.map(coord => {
+            const [lng, lat] = coord;
+            return { lat: lat, lng: lng };
+          });
+        }
 
-        // Auto-fit the map to the polygon
+        // Function to draw a polygon ring on the map
+        function drawPolygon(paths) {
+          const polygon = new google.maps.Polygon({
+            paths: paths,
+            strokeColor: '#FF0000',
+            fillColor: '#FF0000',
+            fillOpacity: 0.2,
+            strokeWeight: 2,
+            map: map
+          });
+          return polygon;
+        }
+
+        // For a standard "Polygon" geometry, geometry.coordinates is an array of "rings"
+        // (the first ring is the outer boundary, subsequent rings are holes, etc.)
+        // For "MultiPolygon", geometry.coordinates is an array of polygons -> each polygon is an array of rings.
+        let polygons = [];
+
+        if (geometry.type === "Polygon") {
+          polygons.push(geometry.coordinates);
+        } else if (geometry.type === "MultiPolygon") {
+          polygons = geometry.coordinates; // each item is an array of rings
+        }
+
         const bounds = new google.maps.LatLngBounds();
-        path.forEach(coord => bounds.extend(coord));
-        map.fitBounds(bounds);
 
+        polygons.forEach(rings => {
+          // rings is an array of ring, e.g. [ [lng, lat], [lng, lat], ... ] for the outer ring,
+          // plus optional inner rings for holes.
+          // The first ring is the outer boundary
+          const outerRingLatLng = ringToLatLng(rings[0]);
+          // If you want to handle holes, you can also convert rings[1], rings[2], etc.
+
+          // Draw the polygon from the outer ring (and holes if you want)
+          const polygonObj = drawPolygon(outerRingLatLng);
+
+          // Extend the bounds by all coords in the outer ring
+          outerRingLatLng.forEach(coord => bounds.extend(coord));
+        });
+
+        map.fitBounds(bounds);
       }
     </script>
   </head>
@@ -72,3 +137,4 @@
     <div id="map"></div>
   </body>
 </html>
+
