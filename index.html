@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Google Map with Multiple Polygons</title>
+    <title>Google Map with Polygons and Lines</title>
     <!-- Replace YOUR_API_KEY with your actual key -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBX_I71Gwb4In2KPQPQhlJ9bzaFFsw7ITQ"></script>
     <style>
@@ -18,110 +18,161 @@
     </style>
     <script>
       function initMap() {
-        // Grab both 'field' and 'transect' query parameters
+        // 1. Grab the 'field' and 'transect' (optional) params
         const urlParams = new URLSearchParams(window.location.search);
         const fieldParam    = urlParams.get('field');
         const transectParam = urlParams.get('transect');
 
-        // Create a satellite map with some placeholder center
+        // 2. Initialize the map in satellite mode
         const map = new google.maps.Map(document.getElementById('map'), {
           center: { lat: 54.61, lng: -6.69 },
           zoom: 8,
           mapTypeId: 'satellite'
         });
 
-        // We'll track overall bounding coords so we can fit everything together
+        // We'll keep track of overall bounds so we can fit all shapes
         const overallBounds = new google.maps.LatLngBounds();
 
-        // If there's a 'field' param, parse & draw it
+        // 3. Parse & draw the field geometry
         if (fieldParam) {
           try {
             const fieldGeojson = JSON.parse(fieldParam);
-            drawGeoJsonShape(fieldGeojson, map, overallBounds, {
-              strokeColor: '#FF0000',  // Field = red
+            drawGeoJson(fieldGeojson, map, overallBounds, {
+              strokeColor: '#FF0000',
               fillColor: '#FF0000'
             });
           } catch (e) {
-            console.error("Error parsing 'field' GeoJSON:", e);
+            console.error("Error parsing field GeoJSON:", e);
           }
         }
 
-        // If there's a 'transect' param, parse & draw it
+        // 4. Parse & draw the transect geometry
         if (transectParam) {
           try {
             const transectGeojson = JSON.parse(transectParam);
-            drawGeoJsonShape(transectGeojson, map, overallBounds, {
-              strokeColor: '#0000FF',  // Transect = blue
+            drawGeoJson(transectGeojson, map, overallBounds, {
+              strokeColor: '#0000FF',
               fillColor: '#0000FF'
             });
           } catch (e) {
-            console.error("Error parsing 'transect' GeoJSON:", e);
+            console.error("Error parsing transect GeoJSON:", e);
           }
         }
 
-        // After drawing both (if any), fit the map to show everything
-        // But only if the overallBounds is non-empty
+        // 5. If we actually drew anything, fit the map to it
         if (!overallBounds.isEmpty()) {
           map.fitBounds(overallBounds);
         }
       }
 
-      // Helper function to draw a (Multi)Polygon from a GeoJSON object,
-      // updating the map and bounds. 
-      function drawGeoJsonShape(geojson, map, overallBounds, polygonOptions) {
-        // Might be a FeatureCollection, Feature, or direct geometry object.
-        // Let’s unify it to a geometry object of type Polygon/MultiPolygon.
+      /**
+       * Draws one or more shapes from a GeoJSON object.
+       * The object may be:
+       *  - A FeatureCollection with multiple features
+       *  - A single Feature
+       *  - A bare geometry (Polygon, MultiPolygon, LineString, MultiLineString)
+       */
+      function drawGeoJson(geojson, map, overallBounds, styleOptions) {
+        if (!geojson) return;
 
-        // If it's a FeatureCollection, just take each Feature in turn
+        // If it's a FeatureCollection, apply to each feature
         if (geojson.type === "FeatureCollection") {
           geojson.features.forEach(feature => {
-            drawSingleFeature(feature, map, overallBounds, polygonOptions);
+            drawGeoJsonFeature(feature, map, overallBounds, styleOptions);
           });
-        } else if (geojson.type === "Feature") {
-          drawSingleFeature(geojson, map, overallBounds, polygonOptions);
-        } else {
-          // It's presumably a geometry object
-          const fakeFeature = { type: "Feature", geometry: geojson };
-          drawSingleFeature(fakeFeature, map, overallBounds, polygonOptions);
-        }
-      }
-
-      function drawSingleFeature(feature, map, overallBounds, polygonOptions) {
-        const geometry = feature.geometry;
-        if (!geometry || !(geometry.type === "Polygon" || geometry.type === "MultiPolygon")) {
-          console.warn("Skipping non-polygon geometry:", geometry);
           return;
         }
 
-        // Now handle (Multi)Polygon
-        let polygons = [];
+        // If it's a Feature, handle it
+        if (geojson.type === "Feature") {
+          drawGeoJsonFeature(geojson, map, overallBounds, styleOptions);
+          return;
+        }
 
+        // Otherwise, assume it's a geometry object
+        const fakeFeature = { type: "Feature", geometry: geojson };
+        drawGeoJsonFeature(fakeFeature, map, overallBounds, styleOptions);
+      }
+
+      /**
+       * Draws a single GeoJSON Feature that has geometry of type
+       * Polygon, MultiPolygon, LineString, or MultiLineString.
+       */
+      function drawGeoJsonFeature(feature, map, overallBounds, styleOptions) {
+        const geometry = feature.geometry;
+        if (!geometry) return;
+
+        const gtype = geometry.type;
+
+        // Handle polygons (or multipolygons)
+        if (gtype === "Polygon" || gtype === "MultiPolygon") {
+          drawPolygon(geometry, map, overallBounds, styleOptions);
+        }
+        // Handle lines (or multi-lines)
+        else if (gtype === "LineString" || gtype === "MultiLineString") {
+          drawLine(geometry, map, overallBounds, styleOptions);
+        } else {
+          console.warn("Skipping unsupported geometry type:", gtype);
+        }
+      }
+
+      /**
+       * Draw a (Multi)Polygon with the given style options
+       */
+      function drawPolygon(geometry, map, overallBounds, styleOptions) {
+        let polygons = [];
         if (geometry.type === "Polygon") {
           // geometry.coordinates = [ [ [lng, lat], [lng, lat], ... ] ]
-          polygons.push(geometry.coordinates); 
+          polygons.push(geometry.coordinates);
         } else if (geometry.type === "MultiPolygon") {
-          // geometry.coordinates = [ [ [ [lng, lat], [lng, lat], ... ] ], [ ... ] ]
-          polygons = geometry.coordinates; 
+          // geometry.coordinates = [ [ [ [lng, lat], ... ] ], [ [ [lng, lat], ... ] ] ]
+          polygons = geometry.coordinates;
         }
 
         polygons.forEach(rings => {
-          // rings is an array of linear rings, the first ring is outer boundary, others are holes
+          // The first ring is the outer boundary
           const outerRing = rings[0];
-          // Convert [lng, lat] -> { lat, lng }
           const outerPath = outerRing.map(pt => ({ lat: pt[1], lng: pt[0] }));
 
-          // For demonstration, we won't handle holes here, but you can convert rings[1], rings[2], etc. similarly
+          // If you need holes, you can handle rings[1], rings[2], etc. as well
           const polygon = new google.maps.Polygon({
             paths: outerPath,
             strokeWeight: 2,
             fillOpacity: 0.2,
-            ...polygonOptions // spread the user-chosen strokeColor, fillColor, etc.
+            ...styleOptions
           });
-
           polygon.setMap(map);
 
-          // Expand overall bounds
+          // Extend the overall bounds
           outerPath.forEach(coord => overallBounds.extend(coord));
+        });
+      }
+
+      /**
+       * Draw a (Multi)LineString with the given style options
+       */
+      function drawLine(geometry, map, overallBounds, styleOptions) {
+        let lines = [];
+        if (geometry.type === "LineString") {
+          // geometry.coordinates = [ [lng, lat], [lng, lat], ... ]
+          lines.push(geometry.coordinates);
+        } else if (geometry.type === "MultiLineString") {
+          // geometry.coordinates = [ [ [lng, lat], ... ], [ [lng, lat], ... ] ]
+          lines = geometry.coordinates;
+        }
+
+        lines.forEach(lineCoords => {
+          const path = lineCoords.map(pt => ({ lat: pt[1], lng: pt[0] }));
+          
+          const polyline = new google.maps.Polyline({
+            path: path,
+            strokeWeight: 2,
+            ...styleOptions
+          });
+          polyline.setMap(map);
+
+          // Extend the overall bounds
+          path.forEach(coord => overallBounds.extend(coord));
         });
       }
     </script>
