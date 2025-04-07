@@ -39,7 +39,8 @@
             const fieldGeojson = JSON.parse(fieldParam);
             drawGeoJson(fieldGeojson, map, overallBounds, {
               strokeColor: '#FF0000',
-              fillColor: '#FF0000'
+              fillColor: '#FF0000',
+              fillOpacity: 0.05
             });
           } catch (e) {
             console.error("Error parsing field GeoJSON:", e);
@@ -51,8 +52,8 @@
           try {
             const transectGeojson = JSON.parse(transectParam);
             drawGeoJson(transectGeojson, map, overallBounds, {
-              strokeColor: '#0000FF',
-              fillColor: '#0000FF'
+              strokeColor: '#FFEA00',
+              fillColor: '#FFEA00'
             });
           } catch (e) {
             console.error("Error parsing transect GeoJSON:", e);
