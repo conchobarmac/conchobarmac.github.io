@@ -26,7 +26,7 @@
           console.warn('No geojson param provided. Using a default center.');
           const map = new google.maps.Map(document.getElementById('map'), {
             center: { lat: 53.45, lng: -7.50 },
-            zoom: 8,
+            zoom: 4,
             mapTypeId: 'satellite'
           });
           return;
@@ -41,7 +41,7 @@
           // Fallback map if parsing fails
           const map = new google.maps.Map(document.getElementById('map'), {
             center: { lat: 53.45, lng: -7.50 },
-            zoom: 8,
+            zoom: 4,
             mapTypeId: 'satellite'
           });
           return;
