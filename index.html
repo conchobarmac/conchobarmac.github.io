@@ -2,8 +2,8 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Google Map with GeoJSON Polygon</title>
-    <!-- Replace YOUR_API_KEY with your actual API key -->
+    <title>Google Map with Multiple Polygons</title>
+    <!-- Replace YOUR_API_KEY with your actual key -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBX_I71Gwb4In2KPQPQhlJ9bzaFFsw7ITQ"></script>
     <style>
       html, body {
@@ -18,118 +18,111 @@
     </style>
     <script>
       function initMap() {
-        // 1. Grab the 'geojson' param from the URL
+        // Grab both 'field' and 'transect' query parameters
         const urlParams = new URLSearchParams(window.location.search);
-        const geojsonParam = urlParams.get('geojson');
-        
-        if (!geojsonParam) {
-          console.warn('No geojson param provided. Using a default center.');
-          const map = new google.maps.Map(document.getElementById('map'), {
-            center: { lat: 54.61, lng: -6.69 },
-            zoom: 8,
-            mapTypeId: 'satellite'
-          });
-          return;
-        }
+        const fieldParam    = urlParams.get('field');
+        const transectParam = urlParams.get('transect');
 
-        // 2. Parse the JSON
-        let geojson;
-        try {
-          geojson = JSON.parse(geojsonParam);
-        } catch (e) {
-          console.error('Error parsing geojson:', e);
-          // Fallback map if parsing fails
-          const map = new google.maps.Map(document.getElementById('map'), {
-            center: { lat: 54.61, lng: -6.69 },
-            zoom: 8,
-            mapTypeId: 'satellite'
-          });
-          return;
-        }
-        
-        // 3. Extract the polygon coordinates
-        //    Let's assume it's a Feature with a Polygon geometry.
-        //    GeoJSON polygon coordinates are typically: geometry.coordinates = [ [ [lng, lat], [lng, lat], ... ] ]
-        //    We'll only handle the outer ring here. For multiple rings or multi-polygons, you'll need extra logic.
-        
-        // If it's a FeatureCollection, pick the first feature:
-        if (geojson.type === "FeatureCollection") {
-          // for safety, just pick the first feature
-          geojson = geojson.features[0]; 
-        }
-
-        // If it's a Feature, dig into the geometry:
-        let geometry;
-        if (geojson.type === "Feature") {
-          geometry = geojson.geometry;
-        } else if (geojson.type === "Polygon") {
-          // it's directly a geometry
-          geometry = geojson;
-        } else {
-          console.error("Unsupported GeoJSON type:", geojson.type);
-          return;
-        }
-
-        if (geometry.type !== "Polygon" && geometry.type !== "MultiPolygon") {
-          console.error("GeoJSON geometry is not a Polygon or MultiPolygon. Found:", geometry.type);
-          return;
-        }
-
+        // Create a satellite map with some placeholder center
         const map = new google.maps.Map(document.getElementById('map'), {
-          center: { lat: 0, lng: 0 },
-          zoom: 3,
+          center: { lat: 54.61, lng: -6.69 },
+          zoom: 8,
           mapTypeId: 'satellite'
         });
 
-        // A helper function to convert a single ring from [lng, lat] to google's {lat, lng} format:
-        function ringToLatLng(ringCoords) {
-          return ringCoords.map(coord => {
-            const [lng, lat] = coord;
-            return { lat: lat, lng: lng };
-          });
+        // We'll track overall bounding coords so we can fit everything together
+        const overallBounds = new google.maps.LatLngBounds();
+
+        // If there's a 'field' param, parse & draw it
+        if (fieldParam) {
+          try {
+            const fieldGeojson = JSON.parse(fieldParam);
+            drawGeoJsonShape(fieldGeojson, map, overallBounds, {
+              strokeColor: '#FF0000',  // Field = red
+              fillColor: '#FF0000'
+            });
+          } catch (e) {
+            console.error("Error parsing 'field' GeoJSON:", e);
+          }
         }
 
-        // Function to draw a polygon ring on the map
-        function drawPolygon(paths) {
-          const polygon = new google.maps.Polygon({
-            paths: paths,
-            strokeColor: '#FF0000',
-            fillColor: '#FF0000',
-            fillOpacity: 0.1,
-            strokeWeight: 2,
-            map: map
-          });
-          return polygon;
+        // If there's a 'transect' param, parse & draw it
+        if (transectParam) {
+          try {
+            const transectGeojson = JSON.parse(transectParam);
+            drawGeoJsonShape(transectGeojson, map, overallBounds, {
+              strokeColor: '#0000FF',  // Transect = blue
+              fillColor: '#0000FF'
+            });
+          } catch (e) {
+            console.error("Error parsing 'transect' GeoJSON:", e);
+          }
         }
 
-        // For a standard "Polygon" geometry, geometry.coordinates is an array of "rings"
-        // (the first ring is the outer boundary, subsequent rings are holes, etc.)
-        // For "MultiPolygon", geometry.coordinates is an array of polygons -> each polygon is an array of rings.
+        // After drawing both (if any), fit the map to show everything
+        // But only if the overallBounds is non-empty
+        if (!overallBounds.isEmpty()) {
+          map.fitBounds(overallBounds);
+        }
+      }
+
+      // Helper function to draw a (Multi)Polygon from a GeoJSON object,
+      // updating the map and bounds. 
+      function drawGeoJsonShape(geojson, map, overallBounds, polygonOptions) {
+        // Might be a FeatureCollection, Feature, or direct geometry object.
+        // Let’s unify it to a geometry object of type Polygon/MultiPolygon.
+
+        // If it's a FeatureCollection, just take each Feature in turn
+        if (geojson.type === "FeatureCollection") {
+          geojson.features.forEach(feature => {
+            drawSingleFeature(feature, map, overallBounds, polygonOptions);
+          });
+        } else if (geojson.type === "Feature") {
+          drawSingleFeature(geojson, map, overallBounds, polygonOptions);
+        } else {
+          // It's presumably a geometry object
+          const fakeFeature = { type: "Feature", geometry: geojson };
+          drawSingleFeature(fakeFeature, map, overallBounds, polygonOptions);
+        }
+      }
+
+      function drawSingleFeature(feature, map, overallBounds, polygonOptions) {
+        const geometry = feature.geometry;
+        if (!geometry || !(geometry.type === "Polygon" || geometry.type === "MultiPolygon")) {
+          console.warn("Skipping non-polygon geometry:", geometry);
+          return;
+        }
+
+        // Now handle (Multi)Polygon
         let polygons = [];
 
         if (geometry.type === "Polygon") {
-          polygons.push(geometry.coordinates);
+          // geometry.coordinates = [ [ [lng, lat], [lng, lat], ... ] ]
+          polygons.push(geometry.coordinates); 
         } else if (geometry.type === "MultiPolygon") {
-          polygons = geometry.coordinates; // each item is an array of rings
+          // geometry.coordinates = [ [ [ [lng, lat], [lng, lat], ... ] ], [ ... ] ]
+          polygons = geometry.coordinates; 
         }
 
-        const bounds = new google.maps.LatLngBounds();
-
         polygons.forEach(rings => {
-          // rings is an array of ring, e.g. [ [lng, lat], [lng, lat], ... ] for the outer ring,
-          // plus optional inner rings for holes.
-          // The first ring is the outer boundary
-          const outerRingLatLng = ringToLatLng(rings[0]);
-          // If you want to handle holes, you can also convert rings[1], rings[2], etc.
+          // rings is an array of linear rings, the first ring is outer boundary, others are holes
+          const outerRing = rings[0];
+          // Convert [lng, lat] -> { lat, lng }
+          const outerPath = outerRing.map(pt => ({ lat: pt[1], lng: pt[0] }));
 
-          // Draw the polygon from the outer ring (and holes if you want)
-          const polygonObj = drawPolygon(outerRingLatLng);
+          // For demonstration, we won't handle holes here, but you can convert rings[1], rings[2], etc. similarly
+          const polygon = new google.maps.Polygon({
+            paths: outerPath,
+            strokeWeight: 2,
+            fillOpacity: 0.2,
+            ...polygonOptions // spread the user-chosen strokeColor, fillColor, etc.
+          });
 
-          // Extend the bounds by all coords in the outer ring
-          outerRingLatLng.forEach(coord => bounds.extend(coord));
+          polygon.setMap(map);
+
+          // Expand overall bounds
+          outerPath.forEach(coord => overallBounds.extend(coord));
         });
-
-        map.fitBounds(bounds);
       }
     </script>
   </head>
@@ -137,4 +130,3 @@
     <div id="map"></div>
   </body>
 </html>
-
