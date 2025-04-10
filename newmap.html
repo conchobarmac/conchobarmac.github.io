@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Map (postMessage version)</title>
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script>
+  <style>html, body { margin: 0; height: 100%; } #map { width:100%; height:100%; }</style>
+  <script>
+    let map, overallBounds;
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById('map'), {
+        center: { lat: 0, lng: 0 },
+        zoom: 3,
+        mapTypeId: 'satellite'
+      });
+      overallBounds = new google.maps.LatLngBounds();
+
+      // Listen for messages from the parent
+      window.addEventListener("message", (event) => {
+        // event.data might have fieldGeojson & transectGeojson
+        const { fieldGeojson, transectGeojson } = event.data || {};
+
+        if (fieldGeojson) {
+          drawGeoJson(fieldGeojson, { strokeColor: '#FF0000' });
+        }
+        if (transectGeojson) {
+          drawGeoJson(transectGeojson, { strokeColor: '#0000FF' });
+        }
+        
+        if (!overallBounds.isEmpty()) map.fitBounds(overallBounds);
+      }, false);
+    }
+
+    function drawGeoJson(geojson, styleOptions) {
+      // same logic to handle FeatureCollection/Feature, polygons, lines, etc.
+      // Expand overallBounds as you go
+    }
+  </script>
+</head>
+<body onload="initMap()">
+  <div id="map"></div>
+</body>
+</html>
